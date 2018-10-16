@@ -50,6 +50,7 @@ def build_trainer_params(args, task_names):
     params['val_interval'] = _get_task_attr('val_interval')
     params['dec_val_scale'] = _get_task_attr('dec_val_scale')
     params['openai'] = getattr(args, "openai_transformer")
+    params['n_sent_train'] = getattr(args, "n_sent_train")
 
     return Params(params)
 
@@ -74,11 +75,12 @@ def build_trainer(params, model, run_dir, metric_should_decrease=True):
         opt_params = Params({'type': params['optimizer'], 'lr': params['lr'],
                              'weight_decay': 0.00, 'amsgrad': True})
     elif params['optimizer'] == "openai_adam":
-        log.info("Setting t_total to {}, please ensure this is right for your task".format(params["t_total_openai"]))
+        t_total = 3 * params["n_sent_train"] // params["batch_size"]
+        log.info("Setting t_total to {}, please ensure this is right for your task".format(t_total))
         opt_params = Params({'type': params['optimizer'], 'lr': params['lr'],
                              'schedule': 'warmup_linear', 'l2': 0.01,
                              'warmup': 0.002, 'max_grad_norm': params['max_grad_norm'],
-                             't_total': 3 * params["n_sent_train"] // params["batch_size"]})
+                             't_total': t_total })
     elif params['optimizer'] == 'adamw':
         opt_params = Params({'type': params['optimizer'], 'lr': params['lr'],
                              'l2': 0.01})
@@ -279,10 +281,6 @@ class SamplingMultiTaskTrainer():
             task_info['total_batches_trained'] = 0
             task_info['n_batches_since_val'] = 0
             # We need to set t_total per task...
-            if optimizer_params['type'] == "openai_adam":
-                optimizer_params = Params({'type': "openai_adam", 'lr': optimizer_params['lr'],
-                                     'schedule': 'warmup_linear', 'l2': 0.00,
-                                     'warmup': 0.002, 't_total': task_info['n_tr_batches'] * 3})
             task_info['optimizer'] = Optimizer.from_params(train_params,
                                                            copy.deepcopy(optimizer_params))
             task_info['scheduler'] = LearningRateScheduler.from_params(
