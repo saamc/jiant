@@ -92,6 +92,10 @@ def main(cl_arguments):
     cl_args = handle_arguments(cl_arguments)
     args = config.params_from_file(cl_args.config_file, cl_args.overrides)
 
+    # Set the environment variable for tokenizer if we did no do it earlier
+    if args.openai_transformer:
+        os.environ["TOKENIZER"] = "openai"
+
     # Logistics #
     maybe_make_dir(args.project_dir)  # e.g. /nfs/jsalt/exp/$HOSTNAME
     maybe_make_dir(args.exp_dir)      # e.g. <project_dir>/jiant-demo
@@ -206,8 +210,7 @@ def main(cl_arguments):
                                     args.batch_size, args.bpp_base,
                                     args.weighting_method, args.scaling_method,
                                     to_train, opt_params, schd_params,
-                                    args.shared_optimizer, args.load_model, phase="main",
-                                    load_weights=args.load_weights)
+                                    args.shared_optimizer, args.load_model, phase="main")
 
     # Select model checkpoint from main training run to load
     if not args.train_for_eval:
