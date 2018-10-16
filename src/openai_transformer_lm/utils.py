@@ -23,7 +23,7 @@ encoder_dict = text_encoder.encoder  # just a dict of text -> id
 reverse_encoder_dict = {v:k for k,v in encoder_dict.items()}
 N_VOCAB = len(encoder_dict)
 assert N_VOCAB == 40478
-FILL_ID = N_VOCAB
+FILL_ID = 0
 
 def encode(sentences: List[str]) -> List[List[int]]:
     return text_encoder.encode(sentences)
