@@ -110,11 +110,14 @@ class OpenAIEmbedderModule(nn.Module):
             if param_name == "embed.weight":
                 param.requires_grad = bool(args.openai_transformer_fine_tune) and (min_layer_to_finetune < 1)
             else:
-                param.requires_grad = bool(args.openai_transformer_fine_tune) and int(param_name.split('.')[1]) \
-                                      >= min_layer_to_finetune
+                param_name_tokens = param_name.split('.')
+                if len(param_name_tokens) > 1:
+                    param.requires_grad = bool(args.openai_transformer_fine_tune) and int(param_name_tokens[1]) \
+                                          >= min_layer_to_finetune
 
         # Weighted transformer trainability options
         if args.weighted_openai_transformer:
+            self.model.overall_weight.requires_grad = True
             self.model.level_weights.requires_grad = True
             if bool(args.weighted_openai_transformer_only_fine_tune_weights):
                 for param_name, param in self.model.named_parameters():
