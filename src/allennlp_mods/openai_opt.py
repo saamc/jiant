@@ -11,6 +11,7 @@ from allennlp.training.optimizers import Optimizer
 
 def warmup_cosine(x, warmup=0.002):
     s = 1 if x <= warmup else 0
+
     return s*(x/warmup) + (1-s)*(0.5 * (1 + torch.cos(math.pi * x)))
 
 def warmup_constant(x, warmup=0.002):
@@ -19,6 +20,9 @@ def warmup_constant(x, warmup=0.002):
 
 def warmup_linear(x, warmup=0.002):
     s = 1 if x <= warmup else 0
+    if x > 1:
+        x = 1
+        print("Alert: x > 1, you should stop training")
     return (s*(x/warmup) + (1-s))*(1-x)
 
 SCHEDULES = {
