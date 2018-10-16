@@ -114,8 +114,7 @@ def build_trainer(params, model, run_dir, metric_should_decrease=True):
                            'keep_all_checkpoints': params['keep_all_checkpoints'],
                            'val_data_limit': params['val_data_limit'],
                            'dec_val_scale': params['dec_val_scale'],
-                           'training_data_fraction': params['training_data_fraction'],
-                           'load_weights': params['load_weights']})
+                           'training_data_fraction': params['training_data_fraction']})
     trainer = SamplingMultiTaskTrainer.from_params(model, run_dir,
                                                    copy.deepcopy(train_params))
     return trainer, train_params, opt_params, schd_params
@@ -301,7 +300,7 @@ class SamplingMultiTaskTrainer():
               batch_size, n_batches_per_pass,
               weighting_method, scaling_method,
               train_params, optimizer_params, scheduler_params,
-              shared_optimizer=0, load_model=0, phase="main"):
+              shared_optimizer=0, load_model=0, phase="main", load_weights=None):
         """
         The main training loop.
         Training will stop if we run out of patience or hit the minimum learning rate.
@@ -362,11 +361,11 @@ class SamplingMultiTaskTrainer():
                     parameter.register_hook(clip_function)
 
 
-        if self.load_weights:
+        if load_weights:
             # This is used to load weights, but not the full model with optimizer, etc.
             # Basically will restart training
-            log.info("Loading weights from {}".format(self.load_weights))
-            self._model.load_state_dict(self.load_weights)
+            log.info("Loading weights from {}".format(load_weights))
+            self._model.load_state_dict(torch.load(load_weights))
 
 
         # Calculate per task sampling weights
@@ -1002,7 +1001,6 @@ class SamplingMultiTaskTrainer():
         val_data_limit = params.pop("val_data_limit", 5000)
         dec_val_scale = params.pop("dec_val_scale", 100)
         training_data_fraction = params.pop("training_data_fraction", 1.0)
-        load_weights = params.pop("load_weights", None)
 
         params.assert_empty(cls.__name__)
         return SamplingMultiTaskTrainer(model, patience=patience,
@@ -1014,5 +1012,4 @@ class SamplingMultiTaskTrainer():
                                         keep_all_checkpoints=keep_all_checkpoints,
                                         val_data_limit=val_data_limit,
                                         dec_val_scale=dec_val_scale,
-                                        training_data_fraction=training_data_fraction,
-                                        load_weights=load_weights)
+                                        training_data_fraction=training_data_fraction)
