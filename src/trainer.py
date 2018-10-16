@@ -50,7 +50,9 @@ def build_trainer_params(args, task_names):
     params['val_interval'] = _get_task_attr('val_interval')
     params['dec_val_scale'] = _get_task_attr('dec_val_scale')
     params['openai'] = getattr(args, "openai_transformer")
-    params['n_sent_train'] = getattr(args, "n_sent_train")
+    if params["optimizer"] == "openai_adam":
+        params['n_sent_train'] = getattr(args, "n_sent_train") # We need this for t_total
+                                                               #FIXME: Rework tasks.py to avoid hardcoding?
 
     return Params(params)
 
@@ -300,7 +302,7 @@ class SamplingMultiTaskTrainer():
               batch_size, n_batches_per_pass,
               weighting_method, scaling_method,
               train_params, optimizer_params, scheduler_params,
-              shared_optimizer=0, load_model=0, phase="main", load_weights=None):
+              shared_optimizer=0, load_model=0, phase="main"):
         """
         The main training loop.
         Training will stop if we run out of patience or hit the minimum learning rate.
@@ -359,13 +361,6 @@ class SamplingMultiTaskTrainer():
             for parameter in self._model.parameters():
                 if parameter.requires_grad:
                     parameter.register_hook(clip_function)
-
-
-        if load_weights:
-            # This is used to load weights, but not the full model with optimizer, etc.
-            # Basically will restart training
-            log.info("Loading weights from {}".format(load_weights))
-            self._model.load_state_dict(torch.load(load_weights))
 
 
         # Calculate per task sampling weights
