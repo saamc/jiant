@@ -74,9 +74,11 @@ def build_trainer(params, model, run_dir, metric_should_decrease=True):
         opt_params = Params({'type': params['optimizer'], 'lr': params['lr'],
                              'weight_decay': 0.00, 'amsgrad': True})
     elif params['optimizer'] == "openai_adam":
+        log.info("Setting t_total to {}, please ensure this is right for your task".format(params["t_total_openai"]))
         opt_params = Params({'type': params['optimizer'], 'lr': params['lr'],
-                             'schedule': 'warmup_linear', 'l2': 0.0,
-                             'warmup': 0.002, 'max_grad_norm': 1, 't_total': 25})
+                             'schedule': 'warmup_linear', 'l2': 0.01,
+                             'warmup': 0.002, 'max_grad_norm': params['max_grad_norm'],
+                             't_total': 3 * params["n_sent_train"] // params["batch_size"]})
     elif params['optimizer'] == 'adamw':
         opt_params = Params({'type': params['optimizer'], 'lr': params['lr'],
                              'l2': 0.01})
