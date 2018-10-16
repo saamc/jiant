@@ -336,6 +336,7 @@ class SamplingMultiTaskTrainer():
         self._g_optimizer = g_optimizer
         self._g_scheduler = g_scheduler
 
+
         n_pass, should_stop = 0, False  # define these here b/c they might get overridden on load
         if self._serialization_dir is not None and phase != "eval":  # Resume from serialization path
             if load_model and any(
@@ -469,6 +470,12 @@ class SamplingMultiTaskTrainer():
                 if not isinstance(scheduler.lr_scheduler, ReduceLROnPlateau):
                     scheduler.step_batch(n_pass)
 
+                if 't_total' in optimizer_params:
+                    if optimizer_params['t_total'] == total_batches_trained:
+                        log.info('Finished warmup, stopping training')
+                        should_stop = True
+                        break
+
             # Update training progress on that task
             task_info['n_batches_since_val'] = n_batches_since_val
             task_info['total_batches_trained'] = total_batches_trained
@@ -496,8 +503,8 @@ class SamplingMultiTaskTrainer():
                     batch_util = self._model.utilization.get_metric()
                     log.info("TRAINING BATCH UTILIZATION: %.3f", batch_util)
 
-            # Validation
-            if n_pass % (validation_interval) == 0:
+            # Validation, we want to validate if we stop cause of warmup to avoid empty metrics
+            if n_pass % (validation_interval) == 0 or should_stop:
 
                 # Dump and log all of our current info
                 epoch = int(n_pass / validation_interval)
@@ -526,7 +533,9 @@ class SamplingMultiTaskTrainer():
                     epoch, tasks, batch_size, periodic_save=(phase != "eval"))
 
                 # Check stopping conditions
-                should_stop = self._check_stop(epoch, stop_metric, tasks)
+                # Only check if we don't already stop for warmup:
+                if not should_stop:
+                    should_stop = self._check_stop(epoch, stop_metric, tasks)
 
                 # Log results to logger and tensorboard
                 for name, value in all_val_metrics.items():
