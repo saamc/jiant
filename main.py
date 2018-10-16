@@ -206,7 +206,8 @@ def main(cl_arguments):
                                     args.batch_size, args.bpp_base,
                                     args.weighting_method, args.scaling_method,
                                     to_train, opt_params, schd_params,
-                                    args.shared_optimizer, args.load_model, phase="main")
+                                    args.shared_optimizer, args.load_model, phase="main",
+                                    load_weights=args.load_weights)
 
     # Select model checkpoint from main training run to load
     if not args.train_for_eval:

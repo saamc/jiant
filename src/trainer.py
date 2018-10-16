@@ -50,6 +50,7 @@ def build_trainer_params(args, task_names):
     params['val_interval'] = _get_task_attr('val_interval')
     params['dec_val_scale'] = _get_task_attr('dec_val_scale')
     params['openai'] = getattr(args, "openai_transformer")
+    params['n_sent_train'] = getattr(args, "n_sent_train")
 
     return Params(params)
 
@@ -74,9 +75,12 @@ def build_trainer(params, model, run_dir, metric_should_decrease=True):
         opt_params = Params({'type': params['optimizer'], 'lr': params['lr'],
                              'weight_decay': 0.00, 'amsgrad': True})
     elif params['optimizer'] == "openai_adam":
+        t_total = 3 * params["n_sent_train"] // params["batch_size"]
+        log.info("Setting t_total to {}, please ensure this is right for your task".format(t_total))
         opt_params = Params({'type': params['optimizer'], 'lr': params['lr'],
-                             'schedule': 'warmup_linear', 'l2': 0.0,
-                             'warmup': 0.002, 'max_grad_norm': 1, 't_total': 25})
+                             'schedule': 'warmup_linear', 'l2': 0.01,
+                             'warmup': 0.002, 'max_grad_norm': params['max_grad_norm'],
+                             't_total': t_total })
     elif params['optimizer'] == 'adamw':
         opt_params = Params({'type': params['optimizer'], 'lr': params['lr'],
                              'l2': 0.01})
@@ -121,7 +125,7 @@ class SamplingMultiTaskTrainer():
                  serialization_dir=None, cuda_device=-1,
                  grad_norm=None, grad_clipping=None, lr_decay=None, min_lr=None,
                  keep_all_checkpoints=False, val_data_limit=5000,
-                 dec_val_scale=100, training_data_fraction=1.0):
+                 dec_val_scale=100, training_data_fraction=1.0, load_weights=None):
         """
         The training coordinator. Unusually complicated to handle MTL with tasks of
         diverse sizes.
@@ -182,6 +186,7 @@ class SamplingMultiTaskTrainer():
         self._val_data_limit = val_data_limit
         self._dec_val_scale = dec_val_scale
         self._training_data_fraction = training_data_fraction
+        self._load_weights = load_weights
 
         self._task_infos = None
         self._metric_infos = None
@@ -277,10 +282,6 @@ class SamplingMultiTaskTrainer():
             task_info['total_batches_trained'] = 0
             task_info['n_batches_since_val'] = 0
             # We need to set t_total per task...
-            if optimizer_params['type'] == "openai_adam":
-                optimizer_params = Params({'type': "openai_adam", 'lr': optimizer_params['lr'],
-                                     'schedule': 'warmup_linear', 'l2': 0.00,
-                                     'warmup': 0.002, 't_total': task_info['n_tr_batches'] * 3})
             task_info['optimizer'] = Optimizer.from_params(train_params,
                                                            copy.deepcopy(optimizer_params))
             task_info['scheduler'] = LearningRateScheduler.from_params(
@@ -299,7 +300,7 @@ class SamplingMultiTaskTrainer():
               batch_size, n_batches_per_pass,
               weighting_method, scaling_method,
               train_params, optimizer_params, scheduler_params,
-              shared_optimizer=0, load_model=0, phase="main"):
+              shared_optimizer=0, load_model=0, phase="main", load_weights=None):
         """
         The main training loop.
         Training will stop if we run out of patience or hit the minimum learning rate.
@@ -336,6 +337,7 @@ class SamplingMultiTaskTrainer():
         self._g_optimizer = g_optimizer
         self._g_scheduler = g_scheduler
 
+
         n_pass, should_stop = 0, False  # define these here b/c they might get overridden on load
         if self._serialization_dir is not None and phase != "eval":  # Resume from serialization path
             if load_model and any(
@@ -357,6 +359,14 @@ class SamplingMultiTaskTrainer():
             for parameter in self._model.parameters():
                 if parameter.requires_grad:
                     parameter.register_hook(clip_function)
+
+
+        if load_weights:
+            # This is used to load weights, but not the full model with optimizer, etc.
+            # Basically will restart training
+            log.info("Loading weights from {}".format(load_weights))
+            self._model.load_state_dict(torch.load(load_weights))
+
 
         # Calculate per task sampling weights
         assert_for_log(len(tasks) > 0, "Error: Expected to sample from 0 tasks.")
@@ -469,6 +479,12 @@ class SamplingMultiTaskTrainer():
                 if not isinstance(scheduler.lr_scheduler, ReduceLROnPlateau):
                     scheduler.step_batch(n_pass)
 
+                if 't_total' in optimizer_params:
+                    if optimizer_params['t_total'] == total_batches_trained:
+                        log.info('Finished warmup, stopping training')
+                        should_stop = True
+                        break
+
             # Update training progress on that task
             task_info['n_batches_since_val'] = n_batches_since_val
             task_info['total_batches_trained'] = total_batches_trained
@@ -496,8 +512,8 @@ class SamplingMultiTaskTrainer():
                     batch_util = self._model.utilization.get_metric()
                     log.info("TRAINING BATCH UTILIZATION: %.3f", batch_util)
 
-            # Validation
-            if n_pass % (validation_interval) == 0:
+            # Validation, we want to validate if we stop cause of warmup to avoid empty metrics
+            if n_pass % (validation_interval) == 0 or should_stop:
 
                 # Dump and log all of our current info
                 epoch = int(n_pass / validation_interval)
@@ -526,7 +542,9 @@ class SamplingMultiTaskTrainer():
                     epoch, tasks, batch_size, periodic_save=(phase != "eval"))
 
                 # Check stopping conditions
-                should_stop = self._check_stop(epoch, stop_metric, tasks)
+                # Only check if we don't already stop for warmup:
+                if not should_stop:
+                    should_stop = self._check_stop(epoch, stop_metric, tasks)
 
                 # Log results to logger and tensorboard
                 for name, value in all_val_metrics.items():
