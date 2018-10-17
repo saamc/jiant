@@ -210,7 +210,8 @@ def main(cl_arguments):
                                     args.batch_size, args.bpp_base,
                                     args.weighting_method, args.scaling_method,
                                     to_train, opt_params, schd_params,
-                                    args.shared_optimizer, args.load_model, phase="main")
+                                    args.shared_optimizer, args.load_model, phase="main",
+                                    gradient_accumulation_steps=args.gradient_accumulation_passes)
 
     # Select model checkpoint from main training run to load
     if not args.train_for_eval:
@@ -269,7 +270,7 @@ def main(cl_arguments):
             if task.name == 'mnli-diagnostic':
                 continue
             pred_module = getattr(model, "%s_mdl" % task.name)
-            if not args.openai_transformer_fine_tune:
+            if not args.openai_transformer_fine_tune and not args.elmo_finetune_eval:
                 to_train = elmo_scalars + [(n, p) for n, p in pred_module.named_parameters() if p.requires_grad]
             else:
                 to_train = [(n, p) for n, p in model.named_parameters() if p.requires_grad]
@@ -282,7 +283,8 @@ def main(cl_arguments):
                                        args.batch_size, 1,
                                        args.weighting_method, args.scaling_method,
                                        to_train, opt_params, schd_params,
-                                       args.shared_optimizer, load_model=False, phase="eval")
+                                       args.shared_optimizer, load_model=False, phase="eval",
+                                       gradient_accumulation_steps=args.gradient_accumulation_passes)
 
             # Now that we've trained a model, revert to the normal checkpoint logic for this task.
             task_names_to_avoid_loading.remove(task.name)

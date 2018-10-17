@@ -302,7 +302,8 @@ class SamplingMultiTaskTrainer():
               batch_size, n_batches_per_pass,
               weighting_method, scaling_method,
               train_params, optimizer_params, scheduler_params,
-              shared_optimizer=0, load_model=0, phase="main"):
+              shared_optimizer=0, load_model=0, phase="main",
+              gradient_accumulation_steps=1):
         """
         The main training loop.
         Training will stop if we run out of patience or hit the minimum learning rate.
@@ -326,6 +327,7 @@ class SamplingMultiTaskTrainer():
         -------
         Validation results
         """
+        log.info("Accumulating gradients over {} forward passes".format(gradient_accumulation_steps))
         validation_interval = self._val_interval
         task_infos, metric_infos = self._setup_training(tasks, batch_size, train_params,
                                                         optimizer_params, scheduler_params, phase)
@@ -452,7 +454,8 @@ class SamplingMultiTaskTrainer():
             for batch in itertools.islice(tr_generator, n_batches_per_pass):
                 n_batches_since_val += 1
                 total_batches_trained += 1
-                optimizer.zero_grad()
+                if (n_batches_since_val - 1) % gradient_accumulation_steps:
+                    optimizer.zero_grad()
                 output_dict = self._forward(batch, task=task, for_training=True)
                 assert_for_log("loss" in output_dict,
                                "Model must return a dict containing a 'loss' key")
@@ -467,7 +470,9 @@ class SamplingMultiTaskTrainer():
                 # Gradient regularization and application
                 if self._grad_norm:
                     clip_grad_norm_(self._model.parameters(), self._grad_norm)
-                optimizer.step()
+
+                if not n_batches_since_val % gradient_accumulation_steps:
+                    optimizer.step()
                 n_pass += 1  # update per batch
 
                 # step scheduler if it's not ReduceLROnPlateau
@@ -479,6 +484,8 @@ class SamplingMultiTaskTrainer():
                         log.info('Finished warmup, stopping training')
                         should_stop = True
                         break
+
+            optimizer.zero_grad() # In case leftover gradients
 
             # Update training progress on that task
             task_info['n_batches_since_val'] = n_batches_since_val
