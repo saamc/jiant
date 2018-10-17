@@ -265,12 +265,13 @@ class Pooler(nn.Module):
             seq_emb = proj_seq.sum(dim=1) / mask.sum(dim=1)
         elif self.pool_type == 'final':
             idxs = mask.expand_as(proj_seq).sum(dim=1, keepdim=True).long() - 1
-            seq_emb = proj_seq.gather(dim=1, index=idxs)
+            seq_emb = proj_seq.gather(dim=1, index=idxs).squeeze(dim=1)
         return seq_emb
 
     @classmethod
-    def from_params(cls, d_inp, d_proj, project=True):
-        return cls(d_inp, d_proj=d_proj, project=project)
+    def from_params(cls, d_inp, d_proj, project=True, pool_type='max'):
+        log.info("Using pool type {}".format(pool_type))
+        return cls(d_inp, d_proj=d_proj, project=project, pool_type=pool_type)
 
 
 class Classifier(nn.Module):

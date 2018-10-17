@@ -449,7 +449,11 @@ def build_image_sent_module(task, d_inp, params):
 
 def build_single_sentence_module(task, d_inp, params):
     ''' Build a single classifier '''
-    pooler = Pooler.from_params(d_inp, params['d_proj'], project=not params["openai"])
+    if params["openai"]:
+        pool_type = 'final'
+    else:
+        pool_type = 'max'
+    pooler = Pooler.from_params(d_inp, params['d_proj'], project=not params["openai"], pool_type=pool_type)
     classifier = Classifier.from_params(params['d_proj'], task.n_classes, params)
     return SingleClassifier(pooler, classifier)
 
@@ -469,11 +473,16 @@ def build_pair_sentence_module(task, d_inp, model, vocab, params):
                                         dropout=params["dropout"])
         return pair_attn
 
+    if params["openai"]:
+        pool_type = 'final'
+    else:
+        pool_type = 'max'
+
     if params["attn"]:
-        pooler = Pooler.from_params(params["d_hid_attn"], params["d_hid_attn"], project=False)
+        pooler = Pooler.from_params(params["d_hid_attn"], params["d_hid_attn"], project=False, pool_type=pool_type)
         d_out = params["d_hid_attn"] * 2
     else:
-        pooler = Pooler.from_params(d_inp, params["d_proj"], project=not params["openai"])
+        pooler = Pooler.from_params(d_inp, params["d_proj"], project=not params["openai"], pool_type=pool_type)
         d_out = params["d_proj"]
 
     if params["shared_pair_attn"]:
@@ -598,6 +607,7 @@ class MultiTaskModel(nn.Module):
 
         # embed the sentence
         sent_embs, sent_mask = self.sent_encoder(batch['input1'], task)
+
         # pass to a task specific classifier
         classifier = self._get_classifier(task)
         logits = classifier(sent_embs, sent_mask)

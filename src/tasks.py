@@ -33,7 +33,7 @@ from .allennlp_mods.multilabel_field import MultiLabelField
 
 from . import serialize
 from . import utils
-from .utils import load_tsv, process_sentence, truncate, load_diagnostic_tsv, load_rocstories
+from .utils import load_tsv, process_sentence, truncate, load_diagnostic_tsv
 import codecs
 
 UNK_TOK_ALLENNLP = "@@UNKNOWN@@"

@@ -92,6 +92,10 @@ def main(cl_arguments):
     cl_args = handle_arguments(cl_arguments)
     args = config.params_from_file(cl_args.config_file, cl_args.overrides)
 
+    # Set the environment variable for tokenizer if we did no do it earlier
+    if args.openai_transformer:
+        os.environ["TOKENIZER"] = "openai"
+
     # Logistics #
     maybe_make_dir(args.project_dir)  # e.g. /nfs/jsalt/exp/$HOSTNAME
     maybe_make_dir(args.exp_dir)      # e.g. <project_dir>/jiant-demo
@@ -207,7 +211,7 @@ def main(cl_arguments):
                                     args.weighting_method, args.scaling_method,
                                     to_train, opt_params, schd_params,
                                     args.shared_optimizer, args.load_model, phase="main",
-                                    load_weights=args.load_weights)
+                                    gradient_accumulation_steps=args.gradient_accumulation_passes)
 
     # Select model checkpoint from main training run to load
     if not args.train_for_eval:
@@ -266,7 +270,7 @@ def main(cl_arguments):
             if task.name == 'mnli-diagnostic':
                 continue
             pred_module = getattr(model, "%s_mdl" % task.name)
-            if not args.openai_transformer_fine_tune:
+            if not args.openai_transformer_fine_tune and not args.elmo_finetune_eval:
                 to_train = elmo_scalars + [(n, p) for n, p in pred_module.named_parameters() if p.requires_grad]
             else:
                 to_train = [(n, p) for n, p in model.named_parameters() if p.requires_grad]
@@ -279,7 +283,8 @@ def main(cl_arguments):
                                        args.batch_size, 1,
                                        args.weighting_method, args.scaling_method,
                                        to_train, opt_params, schd_params,
-                                       args.shared_optimizer, load_model=False, phase="eval")
+                                       args.shared_optimizer, load_model=False, phase="eval",
+                                       gradient_accumulation_steps=args.gradient_accumulation_passes)
 
             # Now that we've trained a model, revert to the normal checkpoint logic for this task.
             task_names_to_avoid_loading.remove(task.name)
