@@ -269,8 +269,9 @@ class Pooler(nn.Module):
         return seq_emb
 
     @classmethod
-    def from_params(cls, d_inp, d_proj, project=True):
-        return cls(d_inp, d_proj=d_proj, project=project)
+    def from_params(cls, d_inp, d_proj, project=True, pool_type='max'):
+        log.info("Using pool type {}".format(pool_type))
+        return cls(d_inp, d_proj=d_proj, project=project, pool_type=pool_type)
 
 
 class Classifier(nn.Module):
