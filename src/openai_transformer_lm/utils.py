@@ -69,6 +69,9 @@ def prep_ids(ids_lists: List[List[int]], n_ctx=512, n_special=3) -> np.ndarray:
 
 
 class OpenAIEmbedderModule(nn.Module):
+
+    max_possible_length = 512
+
     def __init__(self, args, n_special=3, n_ctx=512):
         super(OpenAIEmbedderModule, self).__init__()
         self.model_cfg = model_pytorch.DEFAULT_CONFIG
@@ -85,6 +88,10 @@ class OpenAIEmbedderModule(nn.Module):
         self.model = transformer_model(self.model_cfg,
                                        vocab=full_emb_vocab,
                                        n_ctx=self.n_ctx)
+        full_emb_vocab = N_VOCAB + self.n_special + self.max_possible_length  # self.n_ctx
+        self.model = model_pytorch.TransformerModel(self.model_cfg,
+                                                    vocab=full_emb_vocab,
+                                                    n_ctx=self.n_ctx)
 
         # Need specific seed to reproduce results.
         seed = 42
@@ -95,7 +102,7 @@ class OpenAIEmbedderModule(nn.Module):
         loader_args = dict(n_special=n_special)
         # Path to model weights
         loader_args['path'] = openai_data_dir + "/"
-        loader_args['n_ctx'] = self.n_ctx
+        loader_args['n_ctx'] = self.max_possible_length   #self.n_ctx
         # Path to variable name mapping
         loader_args['path_names'] = os.path.dirname(model_pytorch.__file__) + "/"
         # Load pretrained weights from disk
