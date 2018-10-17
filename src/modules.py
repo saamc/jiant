@@ -266,7 +266,6 @@ class Pooler(nn.Module):
         elif self.pool_type == 'final':
             idxs = mask.expand_as(proj_seq).sum(dim=1, keepdim=True).long() - 1
             seq_emb = proj_seq.gather(dim=1, index=idxs).squeeze(dim=1)
-        import pdb; pdb.set_trace()
         return seq_emb
 
     @classmethod
