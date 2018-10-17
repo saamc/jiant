@@ -205,6 +205,11 @@ def main(cl_arguments):
         trainer, _, opt_params, schd_params = build_trainer(params, model,
                                                             args.run_dir,
                                                             should_decrease)
+        #TODO: Make this at initialization rather than here
+        if args.elmo_finetune_all:
+            log.info("Warning: Everything set to trainable")
+            for p in in model.parameters():
+                p.requires_grad = True
         to_train = [(n, p) for n, p in model.named_parameters() if p.requires_grad]
         best_epochs = trainer.train(train_tasks, stop_metric,
                                     args.batch_size, args.bpp_base,
@@ -270,10 +275,16 @@ def main(cl_arguments):
             if task.name == 'mnli-diagnostic':
                 continue
             pred_module = getattr(model, "%s_mdl" % task.name)
-            if not args.openai_transformer_fine_tune and not args.elmo_finetune_eval:
-                to_train = elmo_scalars + [(n, p) for n, p in pred_module.named_parameters() if p.requires_grad]
-            else:
+            if args.openai_transformer_fine_tune:
                 to_train = [(n, p) for n, p in model.named_parameters() if p.requires_grad]
+            #TODO: Make this at initialization/model construction time rather than here
+            elif args.elmo_finetune_all:
+                log.info("Warning: Everything set to trainable")
+                for p in in model.parameters():
+                    p.requires_grad = True
+                to_train = [(n, p) for n, p in model.named_parameters()]
+            else:
+                to_train = elmo_scalars + [(n, p) for n, p in pred_module.named_parameters() if p.requires_grad]
             # Look for <task_name>_<param_name>, then eval_<param_name>
             params = build_trainer_params(args, task_names=[task.name, 'eval'])
             trainer, _, opt_params, schd_params = build_trainer(params, model,
