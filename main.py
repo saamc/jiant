@@ -96,6 +96,14 @@ def main(cl_arguments):
     if args.openai_transformer:
         os.environ["TOKENIZER"] = "openai"
 
+    if args.training_data_absolute > 0 and args.n_sent_train and args.do_train:
+        train_sentences = args.n_sent_train
+        args.n_sent_train = min(args.training_data_absolute, train_sentences)
+        log.info("Limiting training to {} examples".format(args.n_sent_train))
+        args.training_data_fraction = args.n_sent_train / train_sentences
+        log.info("Set training_data_fraction to {}".format(args.training_data_fraction))
+
+
     # Logistics #
     maybe_make_dir(args.project_dir)  # e.g. /nfs/jsalt/exp/$HOSTNAME
     maybe_make_dir(args.exp_dir)      # e.g. <project_dir>/jiant-demo
