@@ -283,7 +283,6 @@ class SamplingMultiTaskTrainer():
             task_info['loss'] = 0.0
             task_info['total_batches_trained'] = 0
             task_info['n_batches_since_val'] = 0
-            # We need to set t_total per task...
             task_info['optimizer'] = Optimizer.from_params(train_params,
                                                            copy.deepcopy(optimizer_params))
             task_info['scheduler'] = LearningRateScheduler.from_params(
@@ -302,7 +301,7 @@ class SamplingMultiTaskTrainer():
               batch_size, n_batches_per_pass,
               weighting_method, scaling_method,
               train_params, optimizer_params, scheduler_params,
-              shared_optimizer=0, load_model=0, phase="main",
+              shared_optimizer=1, load_model=0, phase="main",
               gradient_accumulation_steps=1):
         """
         The main training loop.
