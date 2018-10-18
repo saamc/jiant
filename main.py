@@ -208,7 +208,7 @@ def main(cl_arguments):
         #TODO: Make this at initialization rather than here
         if args.elmo_finetune_all:
             log.info("Warning: Everything set to trainable")
-            for p in in model.parameters():
+            for p in model.parameters():
                 p.requires_grad = True
         to_train = [(n, p) for n, p in model.named_parameters() if p.requires_grad]
         best_epochs = trainer.train(train_tasks, stop_metric,
@@ -280,7 +280,7 @@ def main(cl_arguments):
             #TODO: Make this at initialization/model construction time rather than here
             elif args.elmo_finetune_all:
                 log.info("Warning: Everything set to trainable")
-                for p in in model.parameters():
+                for p in model.parameters():
                     p.requires_grad = True
                 to_train = [(n, p) for n, p in model.named_parameters()]
             else:
