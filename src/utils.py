@@ -30,10 +30,10 @@ logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
 TOKENIZERS = {
     "moses": MosesTokenizer(),
-    "openai": openai_utils
+    "openai": openai_utils,
 }
 
-TOKENIZER = TOKENIZERS[os.environ.get("TOKENIZER", "moses")]
+TOKENIZER = TOKENIZERS[os.environ["TOKENIZER"]]
 SOS_TOK, EOS_TOK, DEL_TOK = "<SOS>", "<EOS>", "<DEL>"
 
 # Note: using the full 'detokenize()' method is not recommended, since it does

@@ -53,6 +53,7 @@ def build_trainer_params(args, task_names):
     if params["optimizer"] == "openai_adam":
         params['n_sent_train'] = getattr(args, "n_sent_train") # We need this for t_total
                                                                #FIXME: Rework tasks.py to avoid hardcoding?
+        params["num_epoch_openai_finetune"] = getattr(args, "num_epoch_openai_finetune")
 
     return Params(params)
 
@@ -77,7 +78,7 @@ def build_trainer(params, model, run_dir, metric_should_decrease=True):
         opt_params = Params({'type': params['optimizer'], 'lr': params['lr'],
                              'weight_decay': 0.00, 'amsgrad': True})
     elif params['optimizer'] == "openai_adam":
-        t_total = 3 * params["n_sent_train"] // params["batch_size"]
+        t_total = params["num_epoch_openai_finetune"] * params["n_sent_train"] // params["batch_size"]
         log.info("Setting t_total to {}, please ensure this is right for your task".format(t_total))
         opt_params = Params({'type': params['optimizer'], 'lr': params['lr'],
                              'schedule': 'warmup_linear', 'l2': 0.01,

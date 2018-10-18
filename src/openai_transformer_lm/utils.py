@@ -70,7 +70,7 @@ def prep_ids(ids_lists: List[List[int]], n_ctx=512, n_special=3) -> np.ndarray:
 
 class OpenAIEmbedderModule(nn.Module):
 
-    max_possible_length = 512
+    MAX_POSSIBLE_LEN = 512
 
     def __init__(self, args, n_special=3, n_ctx=512):
         super(OpenAIEmbedderModule, self).__init__()
@@ -78,10 +78,21 @@ class OpenAIEmbedderModule(nn.Module):
         self.n_special = n_special  # number of special tokens
         self.n_ctx = n_ctx  # max context width (seq len)
 
-        full_emb_vocab = N_VOCAB + self.n_special + self.max_possible_length  # self.n_ctx
-        self.model = model_pytorch.TransformerModel(self.model_cfg,
-                                                    vocab=full_emb_vocab,
-                                                    n_ctx=self.n_ctx)
+        full_emb_vocab = N_VOCAB + self.n_special + self.n_ctx
+
+        if args.weighted_openai_transformer:
+            transformer_model = model_pytorch.WeightedTransformerModel
+        else:
+            transformer_model = model_pytorch.TransformerModel
+
+        self.model = transformer_model(self.model_cfg,
+                                       vocab=full_emb_vocab,
+                                       n_ctx=self.n_ctx)
+        full_emb_vocab = N_VOCAB + self.n_special + self.MAX_POSSIBLE_LEN
+        # full_emb_vocab = N_VOCAB + self.n_special + self.n_ctx
+        self.model = transformer_model(self.model_cfg,
+                                       vocab=full_emb_vocab,
+                                       n_ctx=self.n_ctx)
 
         # Need specific seed to reproduce results.
         seed = 42
@@ -92,7 +103,8 @@ class OpenAIEmbedderModule(nn.Module):
         loader_args = dict(n_special=n_special)
         # Path to model weights
         loader_args['path'] = openai_data_dir + "/"
-        loader_args['n_ctx'] = self.max_possible_length   #self.n_ctx
+        loader_args['n_ctx'] = self.MAX_POSSIBLE_LEN
+        # loader_args['n_ctx'] = self.n_ctx
         # Path to variable name mapping
         loader_args['path_names'] = os.path.dirname(model_pytorch.__file__) + "/"
         # Load pretrained weights from disk
@@ -102,13 +114,23 @@ class OpenAIEmbedderModule(nn.Module):
 
         # Set trainability of this module.
         min_layer_to_finetune = args.openai_transformer_fine_tune_min_layer
-        for name, param in self.model.named_parameters():
+        for param_name, param in self.model.named_parameters():
             # Check whether we are on the first layer:
-            if name == "embed.weight":
+            if param_name == "embed.weight":
                 param.requires_grad = bool(args.openai_transformer_fine_tune) and (min_layer_to_finetune < 1)
             else:
-                param.requires_grad = bool(args.openai_transformer_fine_tune) and int(name.split('.')[1])\
-                                      >= min_layer_to_finetune
+                param_name_tokens = param_name.split('.')
+                if len(param_name_tokens) > 1:
+                    param.requires_grad = bool(args.openai_transformer_fine_tune) and int(param_name_tokens[1]) \
+                                          >= min_layer_to_finetune
+
+        # Weighted transformer trainability options
+        if args.weighted_openai_transformer:
+            self.model.overall_weight.requires_grad = True
+            self.model.level_weights.requires_grad = True
+            if bool(args.weighted_openai_transformer_only_fine_tune_weights):
+                for param_name, param in self.model.named_parameters():
+                    param.requires_grad = False
 
 
     def forward(self, sent: Dict[str, torch.LongTensor],
