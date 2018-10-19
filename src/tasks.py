@@ -1031,6 +1031,29 @@ class CoLATask(SingleClassificationTask):
         return {'mcc': self.scorer1.get_metric(reset),
                 'accuracy': self.scorer2.get_metric(reset)}
 
+@register_task('fake_sentence_detection', rel_path='FAKE')
+class FakeSentenceDetectionTask(SingleClassificationTask):
+    """
+    Predict if a sentence is real or fake. Dataset from COLA
+    """
+    def __init__(self, path, max_seq_len, name="fake_sent"):
+        super(FakeSentenceDetectionTask, self).__init__(name, 2)
+        self.load_data(path, max_seq_len)
+        self.sentences = self.train_data_text[0] + self.val_data_text[0]
+
+    def load_data(self, path, max_seq_len):
+        tr_data = load_tsv(os.path.join(path, "train.tsv"), max_seq_len,
+                           s1_idx=3, s2_idx=None, targ_idx=1)
+        val_data = load_tsv(os.path.join(path, "dev.tsv"), max_seq_len,
+                            s1_idx=3, s2_idx=None, targ_idx=1)
+        te_data = load_tsv(os.path.join(path, 'test.tsv'), max_seq_len,
+                           s1_idx=3, s2_idx=None, targ_idx=None, idx_idx=0, skip_rows=1)
+        self.train_data_text = tr_data
+        self.val_data_text = val_data
+        self.test_data_text = te_data
+        log.info("\tFinished loading CoLA.")
+
+
 
 @register_task('qqp', rel_path='QQP/')
 class QQPTask(PairClassificationTask):
