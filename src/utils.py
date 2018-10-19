@@ -170,6 +170,8 @@ def process_sentence(sent, max_seq_len, sos_tok=SOS_TOK, eos_tok=EOS_TOK):
     '''process a sentence '''
     max_seq_len -= 2
     assert max_seq_len > 0, "Max sequence length should be at least 2!"
+    TOKENIZER = TOKENIZERS[os.environ.get("TOKENIZER", "moses")] # Do it again since it crashes above for RTE...
+    # TODO: Figure out wtf is going on
     if isinstance(sent, str):
         return [sos_tok] + TOKENIZER.tokenize(sent)[:max_seq_len] + [eos_tok]
     elif isinstance(sent, list):
