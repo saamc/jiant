@@ -95,6 +95,16 @@ def load_model_state(model, state_path, gpu_id, skip_task_models=[], strict=True
         for key in keys_to_skip:
             del model_state[key]
 
+    # === Temporary hack === #
+    openai_delete_count = 0
+    for name in list(model_state):
+        if name.endswith(".attn.b"):
+            del model_state[name]
+            openai_delete_count += 1
+    if openai_delete_count:
+        logging.warning("Deleted %d attn.bs from model." % openai_delete_count)
+    # === End hack === #
+
     model.load_state_dict(model_state, strict=False)
     logging.info("Loaded model state from %s", state_path)
 
