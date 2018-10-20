@@ -76,7 +76,7 @@ def _atomic_tokenize(sent: str, atomic_tok: str, nonatomic_toks: List[str], max_
     sent = [nonatomic_toks[0] if t == atomic_tok else t for t in sent]
     return sent
 
-def process_single_pair_task_split(split, indexers, is_pair=True, classification=True):
+def process_single_pair_task_split(split, indexers, is_pair=True, classification=True, lm=False):
     '''
     Convert a dataset of sentences into padded sequences of indices. Shared
     across several classes.
@@ -101,6 +101,13 @@ def process_single_pair_task_split(split, indexers, is_pair=True, classification
                                      skip_indexing=True)
         else:
             d["labels"] = NumericField(labels)
+
+        if lm:
+            # ZZ
+            # Use openai indexer
+            d["targs1"] = _sentence_to_text_field(input1[1:] + [input1[0]], indexers)
+            if input2:
+                d["targs2"] = _sentence_to_text_field(input2[1:] + [input2[0]], indexers)
 
         d["idx"] = LabelField(idx, label_namespace="idxs",
                               skip_indexing=True)
@@ -675,7 +682,7 @@ class LanguageModelingTask(SequenceGenerationTask):
         self.target_indexer = {"words": SingleIdTokenIndexer(namespace="tokens")}
         self.files_by_split = {'train': os.path.join(path, "train.txt"),
                                'val': os.path.join(path, "valid.txt"),
-                               'test':os.path.join(path, "test.txt")}
+                               'test': os.path.join(path, "test.txt")}
 
     def count_examples(self):
         """Computes number of samples
@@ -2656,3 +2663,75 @@ class DoubleSimSTSBTask(OAISimilarityRegressionTask):
         self.val_metric = "%s_corr" % self.name
         self.val_metric_decreases = False
 
+
+def _resolve_lm_process_split_func(is_pair, classification, lm):
+    # Defensive closures
+    def _f(self, split, indexers,
+           is_pair_=is_pair, classification_=classification, lm_=lm):
+        return process_single_pair_task_split(
+            split, indexers, is_pair=is_pair_, classification=classification_, lm=lm_)
+    return _f
+
+
+@register_task('cola_lm', rel_path='CoLA/')
+class CoLALMTask(CoLATask):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.lm_scorer = Average()
+    process_split = _resolve_lm_process_split_func(is_pair=False, classification=True, lm=True)
+
+
+@register_task('sst_lm', rel_path='SST-2/')
+class SSTLMTask(SSTTask):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.lm_scorer = Average()
+    process_split = _resolve_lm_process_split_func(is_pair=False, classification=True, lm=True)
+
+
+@register_task('mrpc_double_sim_lm', rel_path='MRPC/')
+class DoubleSimMRPCLMTask(DoubleSimMRPCTask):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.lm_scorer = Average()
+    process_split = _resolve_lm_process_split_func(is_pair=True, classification=True, lm=True)
+
+
+@register_task('stsb_double_sim_lm', rel_path='STS-B/')
+class DoubleSimSTSBLMTask(DoubleSimSTSBTask):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.lm_scorer = Average()
+    process_split = _resolve_lm_process_split_func(is_pair=True, classification=False, lm=True)
+
+
+@register_task('qqp_double_sim_lm', rel_path='QQP/')
+class DoubleSimQQPLMTask(DoubleSimQQPTask):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.lm_scorer = Average()
+    process_split = _resolve_lm_process_split_func(is_pair=True, classification=True, lm=True)
+
+
+@register_task('mnli_single_seq_lm', rel_path='MNLI/')
+class SingleSequenceMultiNLILMTask(SingleSequenceMultiNLITask):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.lm_scorer = Average()
+    process_split = _resolve_lm_process_split_func(is_pair=False, classification=True, lm=True)
+
+
+@register_task('qnli_single_seq_lm', rel_path='QNLI/')
+class SingleSequenceQNLILMTask(SingleSequenceQNLITask):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.lm_scorer = Average()
+    process_split = _resolve_lm_process_split_func(is_pair=False, classification=True, lm=True)
+
+
+@register_task('rte_single_seq_lm', rel_path='RTE/')
+class SingleSequenceRTELMTask(SingleSequenceRTETask):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.lm_scorer = Average()
+    process_split = _resolve_lm_process_split_func(is_pair=False, classification=True, lm=True)

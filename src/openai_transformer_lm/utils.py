@@ -126,11 +126,11 @@ class OpenAIEmbedderModule(nn.Module):
 
         # Weighted transformer trainability options
         if args.weighted_openai_transformer:
-            self.model.overall_weight.requires_grad = True
-            self.model.level_weights.requires_grad = True
             if bool(args.weighted_openai_transformer_only_fine_tune_weights):
                 for param_name, param in self.model.named_parameters():
                     param.requires_grad = False
+            self.model.overall_weight.requires_grad = True
+            self.model.level_weights.requires_grad = True
 
 
     def forward(self, sent: Dict[str, torch.LongTensor],

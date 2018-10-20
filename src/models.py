@@ -335,17 +335,26 @@ def build_module(task, model, d_sent, d_emb, vocab, embedder, args):
     task_params = model._get_task_params(task.name)
     # Add info about transformer for module building
     task_params["openai"] = args.openai_transformer
+    task_params["openai_finetune_lm"] = args.openai_finetune_lm
     if isinstance(task, SingleClassificationTask):
         module = build_single_sentence_module(task, d_sent, task_params)
         setattr(model, '%s_mdl' % task.name, module)
+        if task_params["openai_finetune_lm"]:
+            # Jason: Not really sure where else to grab the vocab size
+            hid2voc = build_lm(task, d_emb, 40478 + 3 + 512)
+            setattr(model, '%s_hid2voc' % task.name, hid2voc)
     elif isinstance(task, (PairClassificationTask, PairRegressionTask,
                            PairOrdinalRegressionTask)):
         module = build_pair_sentence_module(task, d_sent, model, vocab,
                                             task_params)
+        if task_params["openai_finetune_lm"]:
+            # Jason: Not really sure where else to grab the vocab size
+            hid2voc = build_lm(task, d_emb, 40478 + 3 + 512)
+            setattr(model, '%s_hid2voc' % task.name, hid2voc)
         setattr(model, '%s_mdl' % task.name, module)
     elif isinstance(task, LanguageModelingTask):
         d_sent = args.d_hid + (args.skip_embs * d_emb)
-        hid2voc = build_lm(task, d_sent, args)
+        hid2voc = build_lm(task, d_sent, args.max_word_v_size)
         setattr(model, '%s_hid2voc' % task.name, hid2voc)
     elif isinstance(task, TaggingTask):
         hid2tag = build_tagger(task, d_sent, task.num_tags)
@@ -502,9 +511,9 @@ def build_pair_sentence_module(task, d_inp, model, vocab, params):
     module = PairClassifier(pooler, classifier, pair_attn, params["openai"])
     return module
 
-def build_lm(task, d_inp, args):
+def build_lm(task, d_inp, vocab_size):
     ''' Build LM components (just map hidden states to vocab logits) '''
-    hid2voc = nn.Linear(d_inp, args.max_word_v_size)
+    hid2voc = nn.Linear(d_inp, vocab_size)
     return hid2voc
 
 def build_tagger(task, d_inp, out_dim):
@@ -537,7 +546,8 @@ class MultiTaskModel(nn.Module):
         self.elmo = args.elmo and not args.elmo_chars_only
         self.sep_embs_for_skip = args.sep_embs_for_skip
         self.openai = args.openai_transformer
-
+        self.openai_finetune_lm = args.openai_finetune_lm
+        self.openai_lm_weight = args.openai_lm_weight
 
     def forward(self, task, batch, predict=False):
         '''
@@ -560,7 +570,10 @@ class MultiTaskModel(nn.Module):
                 self.utilization(get_batch_utilization(batch['input']))
 
         if isinstance(task, SingleClassificationTask):
-            out = self._single_sentence_forward(batch, task, predict)
+            if self.openai_finetune_lm:
+                out = self._single_sentence_forward_with_openai_lm(batch, task, predict)
+            else:
+                out = self._single_sentence_forward(batch, task, predict)
         elif isinstance(task, MultiNLIDiagnosticTask):
             out = self._pair_sentence_MNLI_diagnostic_forward(batch, task, predict)
         elif isinstance(task, (PairClassificationTask, PairRegressionTask,
@@ -568,7 +581,10 @@ class MultiTaskModel(nn.Module):
             if task.name in ['wiki103_classif', 'reddit_pair_classif', 'reddit_pair_classif_mini', 'reddit_pair_classif_3.4G', 'mt_pair_classif', 'mt_pair_classif_mini']:
                 out = self._positive_pair_sentence_forward(batch, task, predict)
             else:
-                out = self._pair_sentence_forward(batch, task, predict)
+                if self.openai_finetune_lm:
+                    out = self._pair_sentence_forward_with_openai_lm(batch, task, predict)
+                else:
+                    out = self._pair_sentence_forward(batch, task, predict)
         elif isinstance(task, LanguageModelingTask):
             out = self._lm_forward(batch, task, predict)
         elif isinstance(task, TaggingTask):
@@ -642,6 +658,38 @@ class MultiTaskModel(nn.Module):
                 _, out['preds'] = logits.max(dim=1)
         return out
 
+    def _single_sentence_forward_with_openai_lm(self, batch, task, predict):
+        clf_out = self._single_sentence_forward(batch, task, predict)
+        lm_out = self._openai_lm_forward(
+            batch, task, predict, targs_key='targs1', input_key='input1',
+        )
+        new_out = {}
+        for k, v in clf_out.items():
+            new_out[f"clf_{k}"] = v
+        for k, v in lm_out.items():
+            new_out[f"lm_{k}"] = v
+        new_out["loss"] = clf_out["loss"] + self.openai_lm_weight * lm_out["loss"]
+        return new_out
+
+    def _pair_sentence_forward_with_openai_lm(self, batch, task, predict):
+        clf_out = self._pair_sentence_forward(batch, task, predict)
+        lm1_out = self._openai_lm_forward(
+            batch, task, predict, targs_key='targs1', input_key='input1',
+        )
+        lm2_out = self._openai_lm_forward(
+            batch, task, predict, targs_key='targs2', input_key='input2',
+        )
+        new_out = {}
+        for k, v in clf_out.items():
+            new_out[f"clf_{k}"] = v
+        for k, v in lm1_out.items():
+            new_out[f"lm1_{k}"] = v
+        for k, v in lm2_out.items():
+            new_out[f"lm2_{k}"] = v
+        lm_loss = (lm1_out["loss"] + lm2_out["loss"]) / 2
+        new_out["loss"] = clf_out["loss"] + self.openai_lm_weight * lm_loss
+        return new_out
+
     def _pair_sentence_MNLI_diagnostic_forward(self, batch, task, predict):
         out = {}
 
@@ -711,7 +759,6 @@ class MultiTaskModel(nn.Module):
                 _, out['preds'] = logits.max(dim=1)
         return out
 
-
     def _pair_sentence_forward(self, batch, task, predict):
         out = {}
 
@@ -757,7 +804,6 @@ class MultiTaskModel(nn.Module):
             else:
                 _, out['preds'] = logits.max(dim=1)
         return out
-
 
     def _ranking_forward(self, batch, task, predict):
         ''' For caption and image ranking. This implementation is intended for Reddit
@@ -897,6 +943,47 @@ class MultiTaskModel(nn.Module):
         assert logits.size(0) == targs.size(0), "Number of logits and targets differ!"
         out['loss'] = F.cross_entropy(logits, targs, ignore_index=pad_idx)
         task.scorer1(out['loss'].item())
+        if predict:
+            pass
+        return out
+
+    def _openai_lm_forward(self, batch, task, predict, targs_key, input_key):
+        """Forward pass for LM model (OpenAI)
+        Args:
+            batch: indexed input data
+            task: (Task obejct)
+            predict: (boolean) predict mode (not supported)
+        return:
+            out: (dict)
+                - 'logits': output layer, dimension: [batchSize * timeSteps * 2, outputDim]
+                            first half: [:batchSize*timeSteps, outputDim] is output layer from forward layer
+                            second half: [batchSize*timeSteps:, outputDim] is output layer from backward layer
+                - 'loss': size average CE loss
+        """
+        words_key = "openai_bpe_pretokenized"
+        out = {}
+        sent_encoder = self.sent_encoder
+        assert_for_log(self.openai, "Use Transformer")
+        assert_for_log(targs_key in batch and words_key in batch[targs_key],
+                       "Batch missing target words!")
+        pad_idx = self.vocab.get_token_index(self.vocab._padding_token, 'tokens')
+        b_size, seq_len = batch[targs_key][words_key].size()
+        n_pad = batch[targs_key][words_key].eq(pad_idx).sum().item()
+        # Computation might be wrong because of seq_len and length reduction
+        out['n_exs'] = (b_size * seq_len - n_pad)
+
+        sent, mask = sent_encoder(batch[input_key], task)
+        sent = sent.masked_fill(1 - mask.byte(), 0)  # avoid NaNs
+        reduced_seq_length = min(sent.shape[1], seq_len)
+
+        hid2voc = getattr(self, "%s_hid2voc" % task.name)
+        logits = hid2voc(sent)[:, :reduced_seq_length].contiguous().view(b_size * reduced_seq_length, -1)
+        out['logits'] = logits
+        targs = batch[targs_key][words_key][:, :reduced_seq_length].contiguous().view(-1)
+
+        assert logits.size(0) == targs.size(0), "Number of logits and targets differ!"
+        out['loss'] = F.cross_entropy(logits, targs, ignore_index=pad_idx)
+        task.lm_scorer(out['loss'].item())
         if predict:
             pass
         return out

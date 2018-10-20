@@ -173,6 +173,9 @@ class SentenceEncoder(Model):
                                                  dtype=sent_mask.dtype,
                                                  device=sent_mask.device)],
                                   dim=1)
+        elif sent_mask.shape[1] > max_seq_length:
+            # Jason: Not sure if this is the right thing to do
+            sent_mask = sent_mask[:, :max_seq_length]
         sent_lstm_mask = sent_mask if self._mask_lstms else None
         if sent_embs is not None:
             sent_enc = self._phrase_layer(sent_embs, sent_lstm_mask)
