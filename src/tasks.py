@@ -76,7 +76,7 @@ def _atomic_tokenize(sent: str, atomic_tok: str, nonatomic_toks: List[str], max_
     sent = [nonatomic_toks[0] if t == atomic_tok else t for t in sent]
     return sent
 
-def process_single_pair_task_split(split, indexers, is_pair=True, classification=True):
+def process_single_pair_task_split(split, indexers, is_pair=True, classification=True, lm=False):
     '''
     Convert a dataset of sentences into padded sequences of indices. Shared
     across several classes.
@@ -101,6 +101,15 @@ def process_single_pair_task_split(split, indexers, is_pair=True, classification
                                      skip_indexing=True)
         else:
             d["labels"] = NumericField(labels)
+
+        if lm:
+            # ZZ
+            # Use openai indexer
+            d["targs1"] = _sentence_to_text_field(input1[1:] + [input1[0]], indexers)
+            d["targs_b1"] = _sentence_to_text_field([input1[-1]] + input1[:-1], indexers)
+            if input2:
+                d["targs2"] = _sentence_to_text_field(input2[1:] + [input2[0]], indexers)
+                d["targs_b2"] = _sentence_to_text_field([input2[-1]] + input2[:-1], indexers)
 
         d["idx"] = LabelField(idx, label_namespace="idxs",
                               skip_indexing=True)
@@ -675,7 +684,7 @@ class LanguageModelingTask(SequenceGenerationTask):
         self.target_indexer = {"words": SingleIdTokenIndexer(namespace="tokens")}
         self.files_by_split = {'train': os.path.join(path, "train.txt"),
                                'val': os.path.join(path, "valid.txt"),
-                               'test':os.path.join(path, "test.txt")}
+                               'test': os.path.join(path, "test.txt")}
 
     def count_examples(self):
         """Computes number of samples
@@ -2637,4 +2646,13 @@ class DoubleSimSTSBTask(OAISimilarityRegressionTask):
         self.scorer2 = Correlation("spearman")
         self.val_metric = "%s_corr" % self.name
         self.val_metric_decreases = False
+
+
+def _single_sentence_process_split_lm(self, split, indexers) -> Iterable[Type[Instance]]:
+    return process_single_pair_task_split(split, indexers, is_pair=False, lm=True)
+
+
+@register_task('cola_lm', rel_path='CoLA/')
+class CoLALMTask(CoLATask):
+    process_split = _single_sentence_process_split_lm
 

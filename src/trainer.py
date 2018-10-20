@@ -55,6 +55,8 @@ def build_trainer_params(args, task_names):
                                                                #FIXME: Rework tasks.py to avoid hardcoding?
         params["num_epoch_openai_finetune"] = getattr(args, "num_epoch_openai_finetune")
 
+    params["openai_finetune_lm"] = getattr(args, "openai_finetune_lm")
+
     return Params(params)
 
 

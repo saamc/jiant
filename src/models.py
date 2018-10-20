@@ -335,9 +335,14 @@ def build_module(task, model, d_sent, d_emb, vocab, embedder, args):
     task_params = model._get_task_params(task.name)
     # Add info about transformer for module building
     task_params["openai"] = args.openai_transformer
+    task_params["openai_finetune_lm"] = args.openai_finetune_lm
     if isinstance(task, SingleClassificationTask):
         module = build_single_sentence_module(task, d_sent, task_params)
         setattr(model, '%s_mdl' % task.name, module)
+        if task_params["openai_finetune_lm"]:
+            d_sent = args.d_hid + (args.skip_embs * d_emb)
+            hid2voc = build_lm(task, d_sent, args)
+            setattr(model, '%s_hid2voc' % task.name, hid2voc)
     elif isinstance(task, (PairClassificationTask, PairRegressionTask,
                            PairOrdinalRegressionTask)):
         module = build_pair_sentence_module(task, d_sent, model, vocab,
@@ -537,7 +542,7 @@ class MultiTaskModel(nn.Module):
         self.elmo = args.elmo and not args.elmo_chars_only
         self.sep_embs_for_skip = args.sep_embs_for_skip
         self.openai = args.openai_transformer
-
+        self.openai_finetune_lm = args.openai_finetune_lm
 
     def forward(self, task, batch, predict=False):
         '''
@@ -560,7 +565,16 @@ class MultiTaskModel(nn.Module):
                 self.utilization(get_batch_utilization(batch['input']))
 
         if isinstance(task, SingleClassificationTask):
-            out = self._single_sentence_forward(batch, task, predict)
+            if self.openai_finetune_lm:
+                out = self._single_sentence_forward(batch, task, predict)
+                lm_out = self._lm_forward(
+                    batch, task, predict,
+                    targs_key='targs1', targs_b_key='targs_b1', input_key='input1',
+                    words_key='openai_bpe_pretokenized',
+                )
+                import pdb; pdb.set_trace()
+            else:
+                out = self._single_sentence_forward(batch, task, predict)
         elif isinstance(task, MultiNLIDiagnosticTask):
             out = self._pair_sentence_MNLI_diagnostic_forward(batch, task, predict)
         elif isinstance(task, (PairClassificationTask, PairRegressionTask,
@@ -711,7 +725,6 @@ class MultiTaskModel(nn.Module):
                 _, out['preds'] = logits.max(dim=1)
         return out
 
-
     def _pair_sentence_forward(self, batch, task, predict):
         out = {}
 
@@ -757,7 +770,6 @@ class MultiTaskModel(nn.Module):
             else:
                 _, out['preds'] = logits.max(dim=1)
         return out
-
 
     def _ranking_forward(self, batch, task, predict):
         ''' For caption and image ranking. This implementation is intended for Reddit
@@ -850,7 +862,9 @@ class MultiTaskModel(nn.Module):
         task.scorer1(logits, targs)
         return out
 
-    def _lm_forward(self, batch, task, predict):
+    def _lm_forward(self, batch, task, predict,
+                    targs_key='targs', targs_b_key='targs_b', input_key='input',
+                    words_key='words'):
         """Forward pass for LM model
         Args:
             batch: indexed input data
@@ -865,16 +879,16 @@ class MultiTaskModel(nn.Module):
         """
         out = {}
         sent_encoder = self.sent_encoder
-        assert_for_log(isinstance(sent_encoder._phrase_layer, BiLMEncoder),
-                       "Not using LM for language modeling task!")
-        assert_for_log('targs' in batch and 'words' in batch['targs'],
+        assert_for_log(isinstance(sent_encoder._phrase_layer, BiLMEncoder) or self.openai,
+                       "Not using LM for language modeling task! (And not Transformer)")
+        assert_for_log(targs_key in batch and words_key in batch[targs_key],
                        "Batch missing target words!")
         pad_idx = self.vocab.get_token_index(self.vocab._padding_token, 'tokens')
-        b_size, seq_len = batch['targs']['words'].size()
-        n_pad = batch['targs']['words'].eq(pad_idx).sum().item()
+        b_size, seq_len = batch[targs_key][words_key].size()
+        n_pad = batch[targs_key][words_key].eq(pad_idx).sum().item()
         out['n_exs'] = (b_size * seq_len - n_pad) * 2
 
-        sent, mask = sent_encoder(batch['input'], task)
+        sent, mask = sent_encoder(batch[input_key], task)
         sent = sent.masked_fill(1 - mask.byte(), 0)  # avoid NaNs
 
         # Split encoder outputs by direction
@@ -891,8 +905,8 @@ class MultiTaskModel(nn.Module):
         logits_bwd = hid2voc(bwd).view(b_size * seq_len, -1)
         logits = torch.cat([logits_fwd, logits_bwd], dim=0)
         out['logits'] = logits
-        trg_fwd = batch['targs']['words'].view(-1)
-        trg_bwd = batch['targs_b']['words'].view(-1)
+        trg_fwd = batch[targs_key][words_key].view(-1)
+        trg_bwd = batch[targs_b_key][words_key].view(-1)
         targs = torch.cat([trg_fwd, trg_bwd], dim=0)
         assert logits.size(0) == targs.size(0), "Number of logits and targets differ!"
         out['loss'] = F.cross_entropy(logits, targs, ignore_index=pad_idx)
