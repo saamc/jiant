@@ -558,6 +558,8 @@ class MultiTaskModel(nn.Module):
         self.openai = args.openai_transformer
         self.openai_finetune_lm = args.openai_finetune_lm
         self.openai_lm_weight = args.openai_lm_weight
+        self.openai_nonlm_weight = args.openai_nonlm_weight
+        assert self.openai_lm_weight > 0 or self.openai_nonlm_weight > 0
 
     def forward(self, task, batch, predict=False):
         '''
@@ -680,7 +682,7 @@ class MultiTaskModel(nn.Module):
             new_out[f"clf_{k}"] = v
         for k, v in lm_out.items():
             new_out[f"lm_{k}"] = v
-        new_out["loss"] = clf_out["loss"] + self.openai_lm_weight * lm_out["loss"]
+        new_out["loss"] = self.openai_nonlm_weight * clf_out["loss"] + self.openai_lm_weight * lm_out["loss"]
         new_out["n_exs"] = clf_out["n_exs"]
         return new_out
 
@@ -700,7 +702,7 @@ class MultiTaskModel(nn.Module):
         for k, v in lm2_out.items():
             new_out[f"lm2_{k}"] = v
         lm_loss = (lm1_out["loss"] + lm2_out["loss"]) / 2
-        new_out["loss"] = clf_out["loss"] + self.openai_lm_weight * lm_loss
+        new_out["loss"] = self.openai_nonlm_weight * clf_out["loss"] + self.openai_lm_weight * lm_loss
         new_out["n_exs"] = clf_out["n_exs"]
         return new_out
 
