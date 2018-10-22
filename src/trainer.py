@@ -57,6 +57,7 @@ def build_trainer_params(args, task_names):
 
     params["openai_finetune_lm"] = getattr(args, "openai_finetune_lm")
     params["openai_lm_weight"] = getattr(args, "openai_lm_weight")
+    params["openai_nonlm_weight"] = getattr(args, "openai_nonlm_weight")
 
     return Params(params)
 
