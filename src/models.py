@@ -340,16 +340,15 @@ def build_module(task, model, d_sent, d_emb, vocab, embedder, args):
         module = build_single_sentence_module(task, d_sent, task_params)
         setattr(model, '%s_mdl' % task.name, module)
         if task_params["openai_finetune_lm"]:
-            # Jason: Not really sure where else to grab the vocab size
-            hid2voc = build_lm(task, d_emb, 40478 + 3 + 512)
+            shared_weights = model.sent_encoder._text_field_embedder.model.embed.weight.t()
+            hid2voc = build_openai_lm(task, d_emb, model)
             setattr(model, '%s_hid2voc' % task.name, hid2voc)
     elif isinstance(task, (PairClassificationTask, PairRegressionTask,
                            PairOrdinalRegressionTask)):
         module = build_pair_sentence_module(task, d_sent, model, vocab,
                                             task_params)
         if task_params["openai_finetune_lm"]:
-            # Jason: Not really sure where else to grab the vocab size
-            hid2voc = build_lm(task, d_emb, 40478 + 3 + 512)
+            hid2voc = build_openai_lm(task, d_emb, model)
             setattr(model, '%s_hid2voc' % task.name, hid2voc)
         setattr(model, '%s_mdl' % task.name, module)
     elif isinstance(task, LanguageModelingTask):
@@ -511,10 +510,18 @@ def build_pair_sentence_module(task, d_inp, model, vocab, params):
     module = PairClassifier(pooler, classifier, pair_attn, params["openai"])
     return module
 
-def build_lm(task, d_inp, vocab_size):
+def build_lm(task, d_inp, vocab_size, shared_weights=None):
     ''' Build LM components (just map hidden states to vocab logits) '''
     hid2voc = nn.Linear(d_inp, vocab_size)
+    if shared_weights is not None:
+        hid2voc.weights = shared_weights
     return hid2voc
+
+def build_openai_lm(task, d_inp, model):
+    embedding_matrix = model.sent_encoder._text_field_embedder.model.embed.weight.t()
+    lm = nn.Linear(d_inp, embedding_matrix.shape[1], bias=False)
+    lm.weights = embedding_matrix
+    return lm
 
 def build_tagger(task, d_inp, out_dim):
     ''' Build tagger components. '''
@@ -656,12 +663,14 @@ class MultiTaskModel(nn.Module):
                 out['preds'] = logits
             else:
                 _, out['preds'] = logits.max(dim=1)
+
+        # import pdb; pdb.set_trace()
         return out
 
     def _single_sentence_forward_with_openai_lm(self, batch, task, predict):
         clf_out = self._single_sentence_forward(batch, task, predict)
         lm_out = self._openai_lm_forward(
-            batch, task, predict, targs_key='targs1', input_key='input1',
+            batch, task, predict, input_key='input1',
         )
         new_out = {}
         for k, v in clf_out.items():
@@ -669,15 +678,16 @@ class MultiTaskModel(nn.Module):
         for k, v in lm_out.items():
             new_out[f"lm_{k}"] = v
         new_out["loss"] = clf_out["loss"] + self.openai_lm_weight * lm_out["loss"]
+        new_out["n_exs"] = clf_out["n_exs"]
         return new_out
 
     def _pair_sentence_forward_with_openai_lm(self, batch, task, predict):
         clf_out = self._pair_sentence_forward(batch, task, predict)
         lm1_out = self._openai_lm_forward(
-            batch, task, predict, targs_key='targs1', input_key='input1',
+            batch, task, predict, input_key='input1',
         )
         lm2_out = self._openai_lm_forward(
-            batch, task, predict, targs_key='targs2', input_key='input2',
+            batch, task, predict, input_key='input2',
         )
         new_out = {}
         for k, v in clf_out.items():
@@ -688,6 +698,7 @@ class MultiTaskModel(nn.Module):
             new_out[f"lm2_{k}"] = v
         lm_loss = (lm1_out["loss"] + lm2_out["loss"]) / 2
         new_out["loss"] = clf_out["loss"] + self.openai_lm_weight * lm_loss
+        new_out["n_exs"] = clf_out["n_exs"]
         return new_out
 
     def _pair_sentence_MNLI_diagnostic_forward(self, batch, task, predict):
@@ -947,7 +958,7 @@ class MultiTaskModel(nn.Module):
             pass
         return out
 
-    def _openai_lm_forward(self, batch, task, predict, targs_key, input_key):
+    def _openai_lm_forward(self, batch, task, predict, input_key):
         """Forward pass for LM model (OpenAI)
         Args:
             batch: indexed input data
@@ -964,11 +975,10 @@ class MultiTaskModel(nn.Module):
         out = {}
         sent_encoder = self.sent_encoder
         assert_for_log(self.openai, "Use Transformer")
-        assert_for_log(targs_key in batch and words_key in batch[targs_key],
-                       "Batch missing target words!")
         pad_idx = self.vocab.get_token_index(self.vocab._padding_token, 'tokens')
-        b_size, seq_len = batch[targs_key][words_key].size()
-        n_pad = batch[targs_key][words_key].eq(pad_idx).sum().item()
+        inputs = batch[input_key][words_key]
+        b_size, seq_len = inputs.size()
+        n_pad = inputs.eq(pad_idx).sum().item()
         # Computation might be wrong because of seq_len and length reduction
         out['n_exs'] = (b_size * seq_len - n_pad)
 
@@ -979,13 +989,20 @@ class MultiTaskModel(nn.Module):
         hid2voc = getattr(self, "%s_hid2voc" % task.name)
         logits = hid2voc(sent)[:, :reduced_seq_length].contiguous().view(b_size * reduced_seq_length, -1)
         out['logits'] = logits
-        targs = batch[targs_key][words_key][:, :reduced_seq_length].contiguous().view(-1)
+
+        # Targets are inputs rolled forward. Last element predicts pad.
+        # Fix to make sure it targets pad_idx = 0
+        inputs_pad = torch.zeros([inputs.shape[0], 1], dtype=inputs.dtype, device=inputs.device)
+        targs = torch.cat([inputs[:, 1:], inputs_pad], dim=1)[:, :reduced_seq_length].contiguous().view(-1)
 
         assert logits.size(0) == targs.size(0), "Number of logits and targets differ!"
         out['loss'] = F.cross_entropy(logits, targs, ignore_index=pad_idx)
-        task.lm_scorer(out['loss'].item())
+        if hasattr(task, "lm_scorer"):
+            task.lm_scorer(out['loss'].item())
         if predict:
             pass
+
+        # import pdb; pdb.set_trace()
         return out
 
     def _grounded_forward(self, batch, task, predict):

@@ -54,7 +54,8 @@ def evaluate(model, tasks: Sequence[tasks_module.Task], batch_size: int,
         dataset = getattr(task, "%s_data" % split)
         generator = iterator(dataset, num_epochs=1, shuffle=False, cuda_device=cuda_device)
         for batch_idx, batch in enumerate(generator):
-            out = model.forward(task, batch, predict=True)
+            with torch.no_grad():
+                out = model.forward(task, batch, predict=True)
             # We don't want mnli-diagnostic to affect the micro and macro average.
             # Accuracy of mnli-diagnostic is hardcoded to 0.
             if task.name != "mnli-diagnostic":

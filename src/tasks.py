@@ -2517,6 +2517,7 @@ class CCGTaggingTask(TaggingTask):
 class OAIEntailmentTask(SingleClassificationTask):
     def __init__(self, name, n_classes, path):
         super(OAIEntailmentTask, self).__init__(name, n_classes)
+        self.lm_scorer = Average()
 
     def transform_data(self, max_first_sent=9999, max_second_sent=9999):
         reshape_data = partial(reshape_two_sent_to_entailment, max_first_sent=max_first_sent,
@@ -2532,6 +2533,7 @@ class OAIEntailmentTask(SingleClassificationTask):
 class OAISimilarityTask(PairClassificationTask):
     def __init__(self, name, n_classes, path):
         super(OAISimilarityTask, self).__init__(name, n_classes)
+        self.lm_scorer = Average()
 
     def transform_data(self, max_first_sent=9999, max_second_sent=9999):
         reshape_data = partial(reshape_two_sent_to_sim, max_first_sent=max_first_sent, max_second_sent=max_second_sent)
@@ -2546,6 +2548,7 @@ class OAISimilarityTask(PairClassificationTask):
 class OAISimilarityRegressionTask(PairRegressionTask):
     def __init__(self, name, path):
         super(OAISimilarityRegressionTask, self).__init__(name)
+        self.lm_scorer = Average()
 
     def transform_data(self, max_first_sent=9999, max_second_sent=9999):
         reshape_data = partial(reshape_two_sent_to_sim, max_first_sent=max_first_sent, max_second_sent=max_second_sent)
@@ -2644,76 +2647,3 @@ class DoubleSimSTSBTask(OAISimilarityRegressionTask):
         self.scorer2 = Correlation("spearman")
         self.val_metric = "%s_corr" % self.name
         self.val_metric_decreases = False
-
-
-def _resolve_lm_process_split_func(is_pair, classification, lm):
-    # Defensive closures
-    def _f(self, split, indexers,
-           is_pair_=is_pair, classification_=classification, lm_=lm):
-        return process_single_pair_task_split(
-            split, indexers, is_pair=is_pair_, classification=classification_, lm=lm_)
-    return _f
-
-
-@register_task('cola_lm', rel_path='CoLA/')
-class CoLALMTask(CoLATask):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.lm_scorer = Average()
-    process_split = _resolve_lm_process_split_func(is_pair=False, classification=True, lm=True)
-
-
-@register_task('sst_lm', rel_path='SST-2/')
-class SSTLMTask(SSTTask):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.lm_scorer = Average()
-    process_split = _resolve_lm_process_split_func(is_pair=False, classification=True, lm=True)
-
-
-@register_task('mrpc_double_sim_lm', rel_path='MRPC/')
-class DoubleSimMRPCLMTask(DoubleSimMRPCTask):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.lm_scorer = Average()
-    process_split = _resolve_lm_process_split_func(is_pair=True, classification=True, lm=True)
-
-
-@register_task('stsb_double_sim_lm', rel_path='STS-B/')
-class DoubleSimSTSBLMTask(DoubleSimSTSBTask):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.lm_scorer = Average()
-    process_split = _resolve_lm_process_split_func(is_pair=True, classification=False, lm=True)
-
-
-@register_task('qqp_double_sim_lm', rel_path='QQP/')
-class DoubleSimQQPLMTask(DoubleSimQQPTask):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.lm_scorer = Average()
-    process_split = _resolve_lm_process_split_func(is_pair=True, classification=True, lm=True)
-
-
-@register_task('mnli_single_seq_lm', rel_path='MNLI/')
-class SingleSequenceMultiNLILMTask(SingleSequenceMultiNLITask):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.lm_scorer = Average()
-    process_split = _resolve_lm_process_split_func(is_pair=False, classification=True, lm=True)
-
-
-@register_task('qnli_single_seq_lm', rel_path='QNLI/')
-class SingleSequenceQNLILMTask(SingleSequenceQNLITask):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.lm_scorer = Average()
-    process_split = _resolve_lm_process_split_func(is_pair=False, classification=True, lm=True)
-
-
-@register_task('rte_single_seq_lm', rel_path='RTE/')
-class SingleSequenceRTELMTask(SingleSequenceRTETask):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.lm_scorer = Average()
-    process_split = _resolve_lm_process_split_func(is_pair=False, classification=True, lm=True)

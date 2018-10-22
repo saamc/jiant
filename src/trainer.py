@@ -762,9 +762,10 @@ class SamplingMultiTaskTrainer():
         return should_stop
 
     def _forward(self, batch, for_training, task=None):
-        ''' At one point this does something, now it doesn't really do anything '''
+        '''At one point this does nothing. now it does something'''
         tensor_batch = batch
-        model_out = self._model.forward(task, tensor_batch)
+        with torch.set_grad_enabled(for_training):
+            model_out = self._model.forward(task, tensor_batch)
         return model_out
 
     def _description_from_metrics(self, metrics):
