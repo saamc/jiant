@@ -336,6 +336,7 @@ def build_module(task, model, d_sent, d_emb, vocab, embedder, args):
     # Add info about transformer for module building
     task_params["openai"] = args.openai_transformer
     task_params["openai_finetune_lm"] = args.openai_finetune_lm
+    task_params["project_pooler"] = args.project_pooler
     if isinstance(task, SingleClassificationTask):
         module = build_single_sentence_module(task, d_sent, task_params)
         setattr(model, '%s_mdl' % task.name, module)
@@ -461,7 +462,7 @@ def build_single_sentence_module(task, d_inp, params):
         pool_type = 'final'
     else:
         pool_type = 'max'
-    pooler = Pooler.from_params(d_inp, params['d_proj'], project=not params["openai"], pool_type=pool_type)
+    pooler = Pooler.from_params(d_inp, params['d_proj'], project=params["project_pooler"], pool_type=pool_type)
     classifier = Classifier.from_params(params['d_proj'], task.n_classes, params)
     return SingleClassifier(pooler, classifier)
 
@@ -481,16 +482,18 @@ def build_pair_sentence_module(task, d_inp, model, vocab, params):
                                         dropout=params["dropout"])
         return pair_attn
 
+    project = params["project_pooler"]
+
     if params["openai"]:
         pool_type = 'final'
     else:
         pool_type = 'max'
 
     if params["attn"]:
-        pooler = Pooler.from_params(params["d_hid_attn"], params["d_hid_attn"], project=False, pool_type=pool_type)
+        pooler = Pooler.from_params(params["d_hid_attn"], params["d_hid_attn"], project=project, pool_type=pool_type)
         d_out = params["d_hid_attn"] * 2
     else:
-        pooler = Pooler.from_params(d_inp, params["d_proj"], project=not params["openai"], pool_type=pool_type)
+        pooler = Pooler.from_params(d_inp, params["d_proj"], project=project, pool_type=pool_type)
         d_out = params["d_proj"]
 
     if params["shared_pair_attn"]:
