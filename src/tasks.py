@@ -146,8 +146,8 @@ def reshape_two_sent_to_entailment(data, max_first_sent, max_second_sent):
         return sent1, [], data[2], data[3]
 
 def reshape_two_sent_to_single_sent_comparison(data, max_first_sent, max_second_sent):
-    sent1, sent2, _, __ = reshape_two_sent_to_sim(data, max_first_sent, max_second_sent)
-    sent1 = sent1.extend(sent2)
+    sent1, sent2, *_ = reshape_two_sent_to_sim(data, max_first_sent, max_second_sent)
+    sent1.extend(sent2)
     if len(data) == 3:
         return sent1, [], data[2]
     else:
@@ -2582,8 +2582,7 @@ class OAISimilaritySingleSentenceTask(SingleClassificationTask):
         self.train_data_text = reshape_data(self.train_data_text)
         self.val_data_text = reshape_data(self.val_data_text)
         self.test_data_text = reshape_data(self.test_data_text)
-        self.sentences = self.train_data_text[0] + self.val_data_text[0] + self.test_data_text[0] + \
-                         self.train_data_text[1] + self.val_data_text[1] + self.test_data_text[1]
+        self.sentences = self.train_data_text[0] + self.val_data_text[0] + self.test_data_text[0]
         log.info("Finished reshaping data")
         log.info("Trimmed lengths at {} for first, {} for second".format(max_first_sent, max_second_sent))
 

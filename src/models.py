@@ -669,7 +669,6 @@ class MultiTaskModel(nn.Module):
             else:
                 _, out['preds'] = logits.max(dim=1)
 
-        # import pdb; pdb.set_trace()
         return out
 
     def _single_sentence_forward_with_openai_lm(self, batch, task, predict):
@@ -1007,7 +1006,6 @@ class MultiTaskModel(nn.Module):
         if predict:
             pass
 
-        # import pdb; pdb.set_trace()
         return out
 
     def _grounded_forward(self, batch, task, predict):
