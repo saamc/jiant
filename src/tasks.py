@@ -145,6 +145,14 @@ def reshape_two_sent_to_entailment(data, max_first_sent, max_second_sent):
     else:
         return sent1, [], data[2], data[3]
 
+def reshape_two_sent_to_single_sent_comparison(data, max_first_sent, max_second_sent):
+    sent1, sent2, _, __ = reshape_two_sent_to_sim(data, max_first_sent, max_second_sent)
+    sent1 = sent1.extend(sent2)
+    if len(data) == 3:
+        return sent1, [], data[2]
+    else:
+        return sent1, [], data[2], data[3]
+
 
 class Task():
     '''Generic class for a task
@@ -2563,6 +2571,22 @@ class OAISimilarityTask(PairClassificationTask):
         log.info("Finished reshaping data")
         log.info("Trimmed lengths at {} for first, {} for second".format(max_first_sent, max_second_sent))
 
+class OAISimilaritySingleSentenceTask(SingleClassificationTask):
+    def __init__(self, name, n_classes, path):
+        super(OAISimilaritySingleSentenceTask, self).__init__(name, n_classes)
+        self.lm_scorer = Average()
+
+    def transform_data(self, max_first_sent=9999, max_second_sent=9999):
+        reshape_data = partial(reshape_two_sent_to_single_sent_comparison, max_first_sent=max_first_sent,
+                               max_second_sent=max_second_sent)
+        self.train_data_text = reshape_data(self.train_data_text)
+        self.val_data_text = reshape_data(self.val_data_text)
+        self.test_data_text = reshape_data(self.test_data_text)
+        self.sentences = self.train_data_text[0] + self.val_data_text[0] + self.test_data_text[0] + \
+                         self.train_data_text[1] + self.val_data_text[1] + self.test_data_text[1]
+        log.info("Finished reshaping data")
+        log.info("Trimmed lengths at {} for first, {} for second".format(max_first_sent, max_second_sent))
+
 class OAISimilarityRegressionTask(PairRegressionTask):
     def __init__(self, name, path):
         super(OAISimilarityRegressionTask, self).__init__(name)
@@ -2633,12 +2657,51 @@ class DoubleSimMRPCTask(OAISimilarityTask):
         return {'acc_f1': (acc + f1) / 2, 'accuracy': acc, 'f1': f1,
                 'precision': pcs, 'recall': rcl}
 
+
+@register_task('mrpc_single_seq', rel_path='MRPC/')
+class SingleSequenceMRPCTask(OAISimilaritySingleSentenceTask):
+    load_data = MRPCTask.load_data
+
+    def __init__(self, path, max_seq_len, name='mrpc_single_seq'):
+        super(OAISimilaritySingleSentenceTask, self).__init__(name, 2)
+        self.load_data(path, max_seq_len)
+        self.transform_data(60, 60)
+        self.scorer2 = F1Measure(1)
+        self.val_metric = "%s_acc_f1" % name
+        self.val_metric_decreases = False
+
+    def get_metrics(self, reset=False):
+        '''Get metrics specific to the task'''
+        acc = self.scorer1.get_metric(reset)
+        pcs, rcl, f1 = self.scorer2.get_metric(reset)
+        return {'acc_f1': (acc + f1) / 2, 'accuracy': acc, 'f1': f1,
+                'precision': pcs, 'recall': rcl}
+
 @register_task('qqp_double_sim', rel_path='QQP/')
 class DoubleSimQQPTask(OAISimilarityTask):
     load_data = QQPTask.load_data
 
     def __init__(self, path, max_seq_len, name='qqp_double_sim'):
         super(OAISimilarityTask, self).__init__(name, 2)
+        self.load_data(path, max_seq_len)
+        self.transform_data(48, 48)
+        self.scorer2 = F1Measure(1)
+        self.val_metric = "%s_acc_f1" % name
+        self.val_metric_decreases = False
+
+    def get_metrics(self, reset=False):
+        '''Get metrics specific to the task'''
+        acc = self.scorer1.get_metric(reset)
+        pcs, rcl, f1 = self.scorer2.get_metric(reset)
+        return {'acc_f1': (acc + f1) / 2, 'accuracy': acc, 'f1': f1,
+                'precision': pcs, 'recall': rcl}
+
+@register_task('qqp_single_seq', rel_path='QQP/')
+class SingleSequenceQQPTask(OAISimilaritySingleSentenceTask):
+    load_data = QQPTask.load_data
+
+    def __init__(self, path, max_seq_len, name='qqp_single_seq'):
+        super(OAISimilaritySingleSentenceTask, self).__init__(name, 2)
         self.load_data(path, max_seq_len)
         self.transform_data(48, 48)
         self.scorer2 = F1Measure(1)
