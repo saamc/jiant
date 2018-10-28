@@ -122,10 +122,11 @@ def write_preds(tasks: Iterable[tasks_module.Task], all_preds, pred_dir, split_n
         preds_df = all_preds[task.name]
         # Tasks that use _write_glue_preds:
         glue_style_tasks = (preprocess.ALL_NLI_PROBING_TASKS
-                            + preprocess.ALL_GLUE_TASKS + ['wmt'])
+                            + preprocess.ALL_GLUE_TASKS + ['wmt']
+                            + preprocess.ALL_RECAST_GLUE_TASKS)
         if task.name in glue_style_tasks:
             # Strict mode: strict GLUE format (no extra cols)
-            strict = (strict_glue_format and task.name in preprocess.ALL_GLUE_TASKS)
+            strict = (strict_glue_format and task.name in preprocess.ALL_GLUE_TASKS + preprocess.ALL_RECAST_GLUE_TASKS)
             _write_glue_preds(task.name, preds_df, pred_dir, split_name,
                              strict_glue_format=strict)
             log.info("Task '%s': Wrote predictions to %s", task.name, pred_dir)
@@ -257,6 +258,9 @@ def _write_glue_preds(task_name: str, preds_df: pd.DataFrame,
                      "sent2_str": "sentence_2",
                      "labels": "true_label"},
                     axis='columns', inplace=True)
+
+    if 'double_sim' in task_name or 'single_seq' in task_name:
+        task_name = task_name.split('_')[0]
 
     if task_name == 'mnli' and split_name == 'test':  # 9796 + 9847 + 1104 = 20747
         assert len(preds_df) == 20747, "Missing predictions for MNLI!"

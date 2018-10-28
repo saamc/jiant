@@ -40,6 +40,11 @@ from .tasks import MTTask
 ALL_GLUE_TASKS = ['sst', 'cola', 'mrpc', 'qqp', 'sts-b',
                   'mnli', 'qnli', 'rte', 'wnli', 'mnli-diagnostic']
 
+ALL_RECAST_GLUE_TASKS = ['mrpc_double_sim', 'qqp_double_sim', 'stsb_double_sim',
+                  'mnli_single_seq', 'qnli_single_seq', 'rte_single_seq', 'wnli_single_seq',
+                         'mnli-diagnostic_single_seq']
+
+
 # people are mostly using nli-prob for now, but we will change to
 # using individual tasks later, so better to have as a list
 ALL_NLI_PROBING_TASKS = ['nli-prob', 'nps', 'nli-prob-prepswap', 'nli-prob-negation', 'nli-alt']
@@ -47,6 +52,8 @@ ALL_NLI_PROBING_TASKS = ['nli-prob', 'nps', 'nli-prob-prepswap', 'nli-prob-negat
 # Tasks for which we need to construct task-specific vocabularies
 ALL_TARG_VOC_TASKS = ['wmt17_en_ru', 'wmt14_en_de', 'reddit_s2s',
                       'reddit_s2s_3.4G', 'reddit_s2s_dummy', 'wiki103_s2s']
+
+
 
 TASKS_REGISTRY = tasks_module.REGISTRY
 
