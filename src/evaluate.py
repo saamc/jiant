@@ -67,6 +67,7 @@ def evaluate(model, tasks: Sequence[tasks_module.Task], batch_size: int,
             assert isinstance(preds, list), "Convert predictions to list!"
             cols = {"preds": preds}
             if task.name in IDX_REQUIRED_TASK_NAMES:
+                print("THIBAULT")
                 assert 'idx' in batch, (f"'idx' field missing from batches "
                                         "for task {task.name}!")
             for field in FIELDS_TO_EXPORT:
@@ -152,6 +153,7 @@ GLUE_NAME_MAP = {'cola': 'CoLA',
                  'rte': 'RTE',
                  'sst': 'SST-2',
                  'sts-b': 'STS-B',
+                 'stsb': 'STS-B',
                  'wnli': 'WNLI'}
 
 def _get_pred_filename(task_name, pred_dir, split_name, strict_glue_format):

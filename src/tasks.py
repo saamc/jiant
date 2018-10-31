@@ -1088,6 +1088,27 @@ class RedditSarcasmTask(SingleClassificationTask):
         log.info("\tFinished loading Reddit Sarcasm dataset.")
 
 
+@register_task('books_corpus_shuffle', rel_path='BCS')
+class BooksCorpusShuffleTask(SingleClassificationTask):
+    def __init__(self, path, max_seq_len, name="books_corpus_shuffle"):
+        super(BooksCorpusShuffleTask, self).__init__(name, 2)
+        self.load_data(path, max_seq_len)
+        self.sentences = self.train_data_text[0] + self.val_data_text[0]
+
+    def load_data(self, path, max_seq_len):
+        tr_data = load_tsv(os.path.join(path, "train.tsv"), max_seq_len,
+                           s1_idx=0, s2_idx=None, targ_idx=1)
+        val_data = load_tsv(os.path.join(path, "val.tsv"), max_seq_len,
+                            s1_idx=0, s2_idx=None, targ_idx=1)
+        te_data = load_tsv(os.path.join(path, 'test.tsv'), max_seq_len,
+                           s1_idx=0, s2_idx=None, targ_idx=None, idx_idx=0, skip_rows=1)
+        self.train_data_text = tr_data
+        self.val_data_text = val_data
+        self.test_data_text = te_data
+        log.info("\tFinished loading BooksCorpus Shuffle dataset.")
+
+
+
 @register_task('qqp', rel_path='QQP/')
 class QQPTask(PairClassificationTask):
     ''' Task class for Quora Question Pairs. '''
@@ -2606,6 +2627,15 @@ class SingleSequenceMultiNLITask(OAIEntailmentTask):
     load_data = MultiNLITask.load_data
 
     def __init__(self, path, max_seq_len, name="mnli_single_seq"):
+        super(OAIEntailmentTask, self).__init__(name, 3)
+        self.load_data(path, max_seq_len)
+        self.transform_data(90, 35)
+
+@register_task('snli_single_seq', rel_path='SNLI/')
+class SingleSequenceSNLITask(OAIEntailmentTask):
+    load_data = SNLITask.load_data
+
+    def __init__(self, path, max_seq_len, name="snli_single_seq"):
         super(OAIEntailmentTask, self).__init__(name, 3)
         self.load_data(path, max_seq_len)
         self.transform_data(90, 35)
